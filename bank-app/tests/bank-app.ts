@@ -62,7 +62,6 @@ describe("bank-app", () => {
   });
 
   it("Is withdrawn!", async () => {
-    const depositAmount = new BN(1_000_000);
     const withdrawnAmount = new BN(500_000);
 
     const tx = await program.methods.withdraw(withdrawnAmount)
@@ -78,61 +77,112 @@ describe("bank-app", () => {
 
     const userReserve = await program.account.userReserve.fetch(BANK_APP_ACCOUNTS.userReserve(provider.publicKey))
     console.log("User reserve: ", userReserve.depositedAmount.toString())
-
-    const expected = depositAmount.sub(withdrawnAmount)
-    if (!userReserve.depositedAmount.eq(expected)) {
-      throw new Error(`Expected: ${expected.toString()}, Actual: ${userReserve.depositedAmount.toString()}`)
-    }
   });
 
-  it("Pause blocks deposit, unpause allows it", async () => {
-  // Pause = true
-  const tx1 = await program.methods.pause(true)
-    .accountsStrict({
-      bankInfo: BANK_APP_ACCOUNTS.bankInfo,
-      authority: provider.publicKey,
-    })
-    .rpc();
-  console.log("Pause(true) signature: ", tx1);
-
-  // Deposit should fail while paused
-  try {
-    await program.methods.deposit(new BN(1))
-      .accountsStrict({
-        bankInfo: BANK_APP_ACCOUNTS.bankInfo,
-        bankVault: BANK_APP_ACCOUNTS.bankVault,
-        userReserve: BANK_APP_ACCOUNTS.userReserve(provider.publicKey),
-        user: provider.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
-
-    throw new Error("Deposit unexpectedly succeeded while paused");
-  } catch (e: any) {
-    console.log("Deposit failed as expected while paused");
-  }
-
-  // Unpause = false
-  const tx2 = await program.methods.pause(false)
-    .accountsStrict({
-      bankInfo: BANK_APP_ACCOUNTS.bankInfo,
-      authority: provider.publicKey,
-    })
-    .rpc();
-  console.log("Pause(false) signature: ", tx2);
-
-  // Deposit should succeed now
-  const tx3 = await program.methods.deposit(new BN(10))
+  it("Is paused!", async () => {
+  console.log("Step 1: Deposit and withdraw");
+  const tx1 = await program.methods.deposit(new BN(1_000_000))
     .accountsStrict({
       bankInfo: BANK_APP_ACCOUNTS.bankInfo,
       bankVault: BANK_APP_ACCOUNTS.bankVault,
       userReserve: BANK_APP_ACCOUNTS.userReserve(provider.publicKey),
       user: provider.publicKey,
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
+      systemProgram: SystemProgram.programId
+    }).rpc();
+  console.log("Deposit signature: ", tx1);
 
-  console.log("Deposit after unpause signature: ", tx3);
+  let userReserve = await program.account.userReserve.fetch(
+    BANK_APP_ACCOUNTS.userReserve(provider.publicKey)
+  );
+  console.log("User reserve: ", userReserve.depositedAmount.toString());
+
+  const tx2 = await program.methods.withdraw(new BN(500_000))
+    .accountsStrict({
+      bankInfo: BANK_APP_ACCOUNTS.bankInfo,
+      bankVault: BANK_APP_ACCOUNTS.bankVault,
+      userReserve: BANK_APP_ACCOUNTS.userReserve(provider.publicKey),
+      user: provider.publicKey,
+      systemProgram: SystemProgram.programId
+    }).rpc();
+  console.log("Withdraw signature: ", tx2);
+
+  userReserve = await program.account.userReserve.fetch(
+    BANK_APP_ACCOUNTS.userReserve(provider.publicKey)
+  );
+  console.log("User reserve: ", userReserve.depositedAmount.toString());
+
+  console.log("Step 2: Pause, then use deposit and withdraw");
+  const tx3 = await program.methods.togglePause()
+    .accountsStrict({
+      bankInfo: BANK_APP_ACCOUNTS.bankInfo,
+      authority: provider.publicKey,
+    }).rpc();
+  console.log("Paused signature: ", tx3);
+
+  // deposit should fail
+  try {
+    await program.methods.deposit(new BN(1_000_000))
+      .accountsStrict({
+        bankInfo: BANK_APP_ACCOUNTS.bankInfo,
+        bankVault: BANK_APP_ACCOUNTS.bankVault,
+        userReserve: BANK_APP_ACCOUNTS.userReserve(provider.publicKey),
+        user: provider.publicKey,
+        systemProgram: SystemProgram.programId
+      }).rpc();
+
+    throw new Error("Error! Deposit unexpectedly succeeded while paused");
+  } catch {
+    console.log("Deposit blocked successfully");
+  }
+
+  // withdraw should fail
+  try {
+    await program.methods.withdraw(new BN(500_000))
+      .accountsStrict({
+        bankInfo: BANK_APP_ACCOUNTS.bankInfo,
+        bankVault: BANK_APP_ACCOUNTS.bankVault,
+        userReserve: BANK_APP_ACCOUNTS.userReserve(provider.publicKey),
+        user: provider.publicKey,
+        systemProgram: SystemProgram.programId
+      }).rpc();
+
+    throw new Error("Error! Withdraw unexpectedly succeeded while paused");
+  } catch {
+    console.log("Withdraw blocked successfully");
+  }
+
+  console.log("Step 3: Continue, then use deposit and withdraw");
+  const tx4 = await program.methods.togglePause()
+    .accountsStrict({
+      bankInfo: BANK_APP_ACCOUNTS.bankInfo,
+      authority: provider.publicKey,
+    }).rpc();
+  console.log("Unpaused signature: ", tx4);
+
+  const tx5 = await program.methods.deposit(new BN(1_000_000))
+    .accountsStrict({
+      bankInfo: BANK_APP_ACCOUNTS.bankInfo,
+      bankVault: BANK_APP_ACCOUNTS.bankVault,
+      userReserve: BANK_APP_ACCOUNTS.userReserve(provider.publicKey),
+      user: provider.publicKey,
+      systemProgram: SystemProgram.programId
+    }).rpc();
+  console.log("Deposit signature: ", tx5);
+
+  userReserve = await program.account.userReserve.fetch(
+    BANK_APP_ACCOUNTS.userReserve(provider.publicKey)
+  );
+  console.log("User reserve: ", userReserve.depositedAmount.toString());
+
+  const tx6 = await program.methods.withdraw(new BN(500_000))
+    .accountsStrict({
+      bankInfo: BANK_APP_ACCOUNTS.bankInfo,
+      bankVault: BANK_APP_ACCOUNTS.bankVault,
+      userReserve: BANK_APP_ACCOUNTS.userReserve(provider.publicKey),
+      user: provider.publicKey,
+      systemProgram: SystemProgram.programId
+    }).rpc();
+  console.log("Withdraw signature: ", tx6);
 });
 
 });

@@ -26,8 +26,8 @@ pub mod bank_app {
         return Withdraw::process(ctx, withdraw_amount);
     }
 
-    pub fn pause(ctx: Context<Pause>, paused: bool) -> Result<()> {
-        return Pause::process(ctx, paused);
+    pub fn toggle_pause(ctx: Context<TogglePause>) -> Result<()> {
+        return TogglePause::process(ctx)
     }
 }
 
