@@ -1,11 +1,11 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { BankApp } from "../target/types/bank_app";
+import { BankApp } from "../bank-app/target/types/bank_app";
 import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 import { BN } from "bn.js";
 import { createAssociatedTokenAccountInstruction, getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { StakingApp } from "../target/types/staking_app";
-import {expect} from "chai";
+
+import {assert, expect} from "chai"
 
 describe("bank-app", () => {
   // Configure the client to use the local cluster.
@@ -13,7 +13,6 @@ describe("bank-app", () => {
   anchor.setProvider(provider);
 
   const program = anchor.workspace.BankApp as Program<BankApp>;
-  const stakingProgram = anchor.workspace.StakingApp as Program<StakingApp>;
 
   const BANK_APP_ACCOUNTS = {
     bankInfo: PublicKey.findProgramAddressSync(
@@ -73,7 +72,7 @@ describe("bank-app", () => {
   });
 
   it("Is deposited token!", async () => {
-    let tokenMint = new PublicKey("4K1HpyXypdjtt9hNnnuj7SxqK3vGJc6NVTk89ezkC4K8") //you should put your token mint here
+    let tokenMint = new PublicKey("4K1HpyXypdjtt9hNnnuj7SxqK3vGJc6NVTk89ezkC4K8") 
     let userAta = getAssociatedTokenAddressSync(tokenMint, provider.publicKey)
     let bankAta = getAssociatedTokenAddressSync(tokenMint, BANK_APP_ACCOUNTS.bankVault, true)
 
@@ -105,62 +104,84 @@ describe("bank-app", () => {
     console.log("User reserve: ", userReserve.depositedAmount.toString())
   });
 
-  it("Test invest to send SOL", async() => {
-    const [stakingVault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("STAKING_VAULT")],
-      stakingProgram.programId
-    );
+  it("Withdraw token with pause logic!", async() => {
+    let tokenMint = new PublicKey("4K1HpyXypdjtt9hNnnuj7SxqK3vGJc6NVTk89ezkC4K8") 
+    let userAta = getAssociatedTokenAddressSync(tokenMint, provider.publicKey)
+    let bankAta = getAssociatedTokenAddressSync(tokenMint, BANK_APP_ACCOUNTS.bankVault, true)
 
-    const [stakingInfo] = PublicKey.findProgramAddressSync(
-      [Buffer.from("USER_INFO"), BANK_APP_ACCOUNTS.bankVault.toBuffer()],
-      stakingProgram.programId
-    );
-    const investAmount = new BN(1_000_000); 
+    let preInstructions: TransactionInstruction[] = []
+    if (await provider.connection.getAccountInfo(bankAta) == null) {
+      preInstructions.push(createAssociatedTokenAccountInstruction(
+        provider.publicKey,
+        bankAta,
+        BANK_APP_ACCOUNTS.bankVault,
+        tokenMint
+      ))
+    }
+    const withdrawAmount = new BN(3_000_000); 
 
-
-    // Unstake => Invest should fail 
-    let isStake = false;
-    try{
-      await program.methods.invest(investAmount, isStake).accountsStrict({
+    console.log("Pause the bank");
+    const txPause = await program.methods.togglePause()
+      .accountsStrict({
         bankInfo: BANK_APP_ACCOUNTS.bankInfo,
-        bankVault: BANK_APP_ACCOUNTS.bankVault,
-        stakingVault: stakingVault,
-        stakingInfo: stakingInfo,
-        stakingProgram: stakingProgram.programId,
         authority: provider.publicKey,
-        systemProgram: SystemProgram.programId
-      }).rpc({skipPreflight: true});
-      expect.fail("Investment should be failed due to isStake is false"); 
-    } catch(err){
-      console.log("Unstake failed as expected"); 
+      }).rpc();
+    
+    // Withdraw should fail
+    try {
+      await program.methods.withdrawToken(withdrawAmount)
+        .accountsStrict({
+          bankInfo: BANK_APP_ACCOUNTS.bankInfo,
+          bankVault: BANK_APP_ACCOUNTS.bankVault,
+          userReserve: BANK_APP_ACCOUNTS.userReserve(provider.publicKey, tokenMint),
+          user: provider.publicKey,
+          tokenMint: tokenMint,
+          bankAta: bankAta,
+          userAta: userAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId
+        }).rpc();
+      
+      expect.fail("Withdraw should have been blocked!"); 
+    } catch {
+      console.log("Token withdraw blocked successfully due to pause");
     }
 
-    // Test stake 
-    isStake = true;
+    console.log("Unpause the bank");
+    await program.methods.togglePause()
+      .accountsStrict({
+        bankInfo: BANK_APP_ACCOUNTS.bankInfo,
+        authority: provider.publicKey,
+      }).rpc();
 
-    // fetch balance before staking
-    const initialBankVaultBalance = await provider.connection.getBalance(BANK_APP_ACCOUNTS.bankVault);
-    const initialStakingVaultBalance = await provider.connection.getBalance(stakingVault);
+    // Check the reserve balance before withdrawing
+    let userReserveBefore = await program.account.userReserve.fetch(
+      BANK_APP_ACCOUNTS.userReserve(provider.publicKey, tokenMint)
+    );
+
+    console.log("Executing successful token withdrawal");
+    const txWithdraw = await program.methods.withdrawToken(withdrawAmount)
+      .accountsStrict({
+        bankInfo: BANK_APP_ACCOUNTS.bankInfo,
+        bankVault: BANK_APP_ACCOUNTS.bankVault,
+        userReserve: BANK_APP_ACCOUNTS.userReserve(provider.publicKey, tokenMint), 
+        user: provider.publicKey,
+        tokenMint: tokenMint, 
+        bankAta: bankAta,
+        userAta: userAta,
+        tokenProgram: TOKEN_PROGRAM_ID, 
+        systemProgram: SystemProgram.programId
+      }).rpc();
+    console.log("Token withdraw signature: ", txWithdraw);
+
+    // Check the reserve balance after withdrawing
+    let userReserveAfter = await program.account.userReserve.fetch(
+      BANK_APP_ACCOUNTS.userReserve(provider.publicKey, tokenMint)
+    );
     
-
-    const tx = await program.methods.invest(investAmount, isStake).accountsStrict({
-      bankInfo: BANK_APP_ACCOUNTS.bankInfo,
-      bankVault: BANK_APP_ACCOUNTS.bankVault,
-      stakingVault: stakingVault,
-      stakingInfo: stakingInfo,
-      stakingProgram: stakingProgram.programId,
-      authority: provider.publicKey,
-      systemProgram: SystemProgram.programId
-    }).rpc();
-    console.log("Invest (stake) signature: ", tx);
-
-    // fetch balance after staking
-    const finalBankVaultBalance = await provider.connection.getBalance(BANK_APP_ACCOUNTS.bankVault);
-    const finalStakingVaultBalance = await provider.connection.getBalance(stakingVault);
-
-    console.log("Bank Vault Balance Change:", initialBankVaultBalance - finalBankVaultBalance);
-    console.log("Staking Vault Balance Change:", finalStakingVaultBalance - initialStakingVaultBalance);
-  })
-
-
+    // Validate that the math matches up perfectly
+    expect(userReserveAfter.depositedAmount.toNumber()).to.equal(
+      userReserveBefore.depositedAmount.toNumber() - withdrawAmount.toNumber()
+    );
+  });
 });

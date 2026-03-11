@@ -1,9 +1,5 @@
-pub mod deposit;
-pub mod initialize;
-pub mod pause;
-pub mod withdraw;
+pub mod authority;
+pub mod user;
 
-pub use deposit::*;
-pub use initialize::*;
-pub use pause::*;
-pub use withdraw::*;
+pub use authority::*;
+pub use user::*;

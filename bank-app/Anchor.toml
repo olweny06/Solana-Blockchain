@@ -6,8 +6,8 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-bank_app = "6k6yLpVacpWnCWCnvUnd4kLJjKcwyecSAkUDuwCdFu25"
-
+bank_app = "5wKvSntJ5aLYNu5E5tkmvaWWQrvBvDeGCTrzu3tojXkH"
+staking_app = "VHPvY2nUaF8PwoK9tN2MzjUuf29Sh6KjMpH6AniZY5g"
 [registry]
 url = "https://api.apr.dev"
 
