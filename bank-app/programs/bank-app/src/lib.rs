@@ -7,7 +7,7 @@ pub mod state;
 pub mod transfer_helper;
 
 use instructions::*;
-
+use token_taking_app::{cpi, program::TokenTakingApp};
 declare_id!("5wKvSntJ5aLYNu5E5tkmvaWWQrvBvDeGCTrzu3tojXkH");
 
 #[program]
@@ -38,6 +38,10 @@ pub mod bank_app {
 
     pub fn invest(ctx: Context<Invest>, amount: u64, is_stake: bool) -> Result<()> {
         return Invest::process(ctx, amount, is_stake);
+    }
+
+    pub fn invest_token(ctx: Context<InvestToken>, amount: u64, is_stake: bool) -> Result<()> {
+        return InvestToken::process(ctx, amount, is_stake);
     }
 }
 
